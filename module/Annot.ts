@@ -6,7 +6,7 @@ export class AnnotUI{
     private height: number = -1;
 
     private vertex_position_buffer: WebGLBuffer;
-    
+
     private vertex_shader: WebGLShader;
     private fragment_shader: WebGLShader;
     private program: WebGLProgram;
@@ -35,7 +35,7 @@ export class AnnotUI{
         this.fragment_shader = this.compileShader(gl.FRAGMENT_SHADER, `void main(){gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);}`);
         this.program = this.linkProgram(this.vertex_shader, this.fragment_shader);
         this.pos_pos = gl.getAttribLocation(this.program, 'pos');
-        
+
         gl.clearColor(1.0, 1.0, 1.0, 1.0);
         // gl.clearDepth(1.0);
         // gl.enable(gl.DEPTH_TEST);
@@ -60,7 +60,7 @@ export class AnnotUI{
 
         requestAnimationFrame(() => this.animate())
     }
-    
+
     private genBuffer(target: GLenum, data: BufferSource, usage: GLenum): WebGLBuffer {
         const gl = this.gl;
         const buffer = gl.createBuffer();
@@ -82,7 +82,7 @@ export class AnnotUI{
         }
         return shader;
     }
-    
+
     private linkProgram(vertex_shader: WebGLShader, fragment_shader: WebGLShader): WebGLProgram {
         const gl = this.gl;
         const program = gl.createProgram();
