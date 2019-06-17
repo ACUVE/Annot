@@ -7,9 +7,7 @@ export class AnnotUI{
 
     private vertex_position_buffer: WebGLBuffer;
 
-    private vertex_shader: WebGLShader;
-    private fragment_shader: WebGLShader;
-    private program: WebGLProgram;
+    private program: GLProgram;
     private pos_pos: GLint;
 
     constructor(canvas_element: HTMLCanvasElement){
@@ -31,15 +29,17 @@ export class AnnotUI{
         ];
 
         this.vertex_position_buffer = this.genBuffer(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
-        this.vertex_shader = this.compileShader(gl.VERTEX_SHADER, `attribute vec4 pos; void main(){gl_Position = pos;}`);
-        this.fragment_shader = this.compileShader(gl.FRAGMENT_SHADER, `void main(){gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);}`);
-        this.program = this.linkProgram(this.vertex_shader, this.fragment_shader);
-        this.pos_pos = gl.getAttribLocation(this.program, 'pos');
+        const vertex_shader = this.compileShader(gl.VERTEX_SHADER, `attribute vec4 pos; void main(){gl_Position = pos;}`);
+        const fragment_shader = this.compileShader(gl.FRAGMENT_SHADER, `void main(){gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);}`);
+        this.program = new GLProgram(gl, [vertex_shader, fragment_shader]);
+        const pos_pos = this.program.attrib_pos.get('pos');
+        if(pos_pos === undefined) throw new Error('shader has no pos variable??');
+        this.pos_pos = pos_pos;
 
         gl.clearColor(1.0, 1.0, 1.0, 1.0);
-        // gl.clearDepth(1.0);
-        // gl.enable(gl.DEPTH_TEST);
-        // gl.depthFunc(gl.LEQUAL);
+        gl.clearDepth(1.0);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
 
         requestAnimationFrame(() => this.animate())
     }
@@ -48,13 +48,13 @@ export class AnnotUI{
         console.log('animate');
         const gl = this.gl;
 
-        gl.clear(this.gl.COLOR_BUFFER_BIT/* | this.gl.DEPTH_BUFFER_BIT*/);
+        gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.vertex_position_buffer);
         gl.vertexAttribPointer(this.pos_pos, 4, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(this.pos_pos);
 
-        gl.useProgram(this.program);
+        this.program.use();
 
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
@@ -83,24 +83,79 @@ export class AnnotUI{
         return shader;
     }
 
-    private linkProgram(vertex_shader: WebGLShader, fragment_shader: WebGLShader): WebGLProgram {
-        const gl = this.gl;
+    private resized(): void {
+        const {width, height} = this.canvas_element.getBoundingClientRect();
+        if(this.width !== width || this.height !== height){
+            this.width = width; this.height = height;
+        }
+    }
+}
+
+class GLProgramBase{
+    private gl: WebGLRenderingContext;
+    protected program: WebGLProgram;
+
+    constructor(gl: WebGLRenderingContext, shaders: Array<WebGLShader>){
+        this.gl = gl;
         const program = gl.createProgram();
         if(program === null) throw new Error('createProgram failed.');
-        gl.attachShader(program, vertex_shader);
-        gl.attachShader(program, fragment_shader);
+        for(let shader of shaders){
+            gl.attachShader(program, shader);
+        }
         gl.linkProgram(program);
         if(!gl.getProgramParameter(program, gl.LINK_STATUS)){
             console.debug(gl.getProgramInfoLog(program))
             throw new Error('linkProgram failed.');
         }
-        return program;
+        this.program = program;
     }
 
-    private resized(): void {
-        const {width, height} = this.canvas_element.getBoundingClientRect();
-        if(this.width !== width || this.height !== height){
-            this.width = width; this.height = height;
+    public use(): void {
+        this.gl.useProgram(this.program);
+    }
+    public getActiveUniform(index: number): WebGLActiveInfo | null {
+        return this.gl.getActiveUniform(this.program, index);
+    }
+    public getActiveAttrib(index: number): WebGLActiveInfo | null {
+        return this.gl.getActiveAttrib(this.program, index);
+    }
+    public getActiveUniformNumber(): number {
+        return <number>this.gl.getProgramParameter(this.program, this.gl.ACTIVE_UNIFORMS);
+    }
+    public getActiveAttribNumber(): number {
+        return <number>this.gl.getProgramParameter(this.program, this.gl.ACTIVE_ATTRIBUTES);
+    }
+    public getAttribLocation(name: string): GLint {
+        return this.gl.getAttribLocation(this.program, name);
+    }
+
+    public getProgram(): WebGLProgram {
+        return this.program;
+    }
+}
+
+class GLProgram extends GLProgramBase{
+    private active_attrib: Array<WebGLActiveInfo> = [];
+    private active_uniform: Array<WebGLActiveInfo> = [];
+    public readonly attrib_pos: Map<string, GLint> = new Map();
+    public readonly uniform_pos: Map<string, GLint> = new Map();
+
+    constructor(gl: WebGLRenderingContext, shaders: Array<WebGLShader>){
+        super(gl, shaders);
+
+        const attrib_num = this.getActiveAttribNumber();
+        for(let i = 0; i < attrib_num; ++i){
+            this.active_attrib.push(<WebGLActiveInfo>this.getActiveAttrib(i));
+        }
+        for(let info of this.active_attrib){
+            this.attrib_pos.set(info.name, this.getAttribLocation(info.name));
+        }
+        const uniform_num = this.getActiveUniformNumber();
+        for(let i = 0; i < uniform_num; ++i){
+            this.active_uniform.push(<WebGLActiveInfo>this.getActiveUniform(i));
+        }
+        for(let info of this.active_uniform){
+            this.uniform_pos.set(info.name, this.getAttribLocation(info.name));
         }
     }
 }
