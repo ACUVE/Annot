@@ -13,16 +13,13 @@ export class AnnotUI{
 
     private texture: WebGLTexture;
 
-    public setImage(image: HTMLImageElement): void {
+    public setImage(image: HTMLImageElement): boolean {
         const gl = this.gl;
         const newtex = this.genTexture(image);
-        if(newtex === null){
-            console.log('fail');
-            return;
-        }
+        if(newtex === null) return false;
         gl.deleteTexture(this.texture);
         this.texture = newtex;
-        console.log('texture created');
+        return true;
     }
 
     constructor(canvas_element: HTMLCanvasElement){
