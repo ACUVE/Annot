@@ -9,6 +9,21 @@ export class AnnotUI{
 
     private program: GLProgram;
     private pos_pos: GLint;
+    private image_pos: WebGLUniformLocation;
+
+    private texture: WebGLTexture;
+
+    public setImage(image: HTMLImageElement): void {
+        const gl = this.gl;
+        const newtex = this.genTexture(image);
+        if(newtex === null){
+            console.log('fail');
+            return;
+        }
+        gl.deleteTexture(this.texture);
+        this.texture = newtex;
+        console.log('texture created');
+    }
 
     constructor(canvas_element: HTMLCanvasElement){
         this.canvas_element = canvas_element;
@@ -30,11 +45,18 @@ export class AnnotUI{
 
         this.vertex_position_buffer = this.genBuffer(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
         const vertex_shader = this.compileShader(gl.VERTEX_SHADER, `attribute vec4 pos; void main(){gl_Position = pos;}`);
-        const fragment_shader = this.compileShader(gl.FRAGMENT_SHADER, `void main(){gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);}`);
+        const fragment_shader = this.compileShader(gl.FRAGMENT_SHADER, `uniform sampler2D image; void main(){gl_FragColor = texture2D(image, vec2(0.5, 0.5));}`);
         this.program = new GLProgram(gl, [vertex_shader, fragment_shader]);
         const pos_pos = this.program.attrib_pos.get('pos');
+        const image_pos = this.program.uniform_pos.get('image');
         if(pos_pos === undefined) throw new Error('shader has no pos variable??');
+        if(image_pos === undefined) throw new Error('shader has no image variable??');
         this.pos_pos = pos_pos;
+        this.image_pos = image_pos;
+
+        const texture = this.genDefaultTexture()
+        if(texture === null) throw new Error('cannot create texture??');
+        this.texture = texture;
 
         gl.clearColor(1.0, 1.0, 1.0, 1.0);
         gl.clearDepth(1.0);
@@ -55,10 +77,38 @@ export class AnnotUI{
         gl.enableVertexAttribArray(this.pos_pos);
 
         this.program.use();
+        gl.uniform1i(this.image_pos, 0);
 
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
         requestAnimationFrame(() => this.animate())
+    }
+
+    private genTexture(image: HTMLImageElement): WebGLTexture | null {
+        const gl = this.gl;
+        const target = gl.TEXTURE_2D;
+        const texture = gl.createTexture();
+        if(texture === null) return texture;
+        gl.bindTexture(target, texture);
+        gl.texParameteri(target, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(target, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(target, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(target, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texImage2D(target, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        return texture;
+    }
+    private genDefaultTexture(): WebGLTexture | null {
+        const gl = this.gl;
+        const target = gl.TEXTURE_2D;
+        const texture = gl.createTexture();
+        if(texture === null) return texture;
+        gl.bindTexture(target, texture);
+        gl.texParameteri(target, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(target, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(target, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(target, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texImage2D(target, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
+        return texture;
     }
 
     private genBuffer(target: GLenum, data: BufferSource, usage: GLenum): WebGLBuffer {
@@ -128,6 +178,9 @@ class GLProgramBase{
     public getAttribLocation(name: string): GLint {
         return this.gl.getAttribLocation(this.program, name);
     }
+    public getUniformLocation(name: string): WebGLUniformLocation | null {
+        return this.gl.getUniformLocation(this.program, name);
+    }
 
     public getProgram(): WebGLProgram {
         return this.program;
@@ -138,7 +191,7 @@ class GLProgram extends GLProgramBase{
     private active_attrib: Array<WebGLActiveInfo> = [];
     private active_uniform: Array<WebGLActiveInfo> = [];
     public readonly attrib_pos: Map<string, GLint> = new Map();
-    public readonly uniform_pos: Map<string, GLint> = new Map();
+    public readonly uniform_pos: Map<string, WebGLUniformLocation> = new Map();
 
     constructor(gl: WebGLRenderingContext, shaders: Array<WebGLShader>){
         super(gl, shaders);
@@ -155,7 +208,9 @@ class GLProgram extends GLProgramBase{
             this.active_uniform.push(<WebGLActiveInfo>this.getActiveUniform(i));
         }
         for(let info of this.active_uniform){
-            this.uniform_pos.set(info.name, this.getAttribLocation(info.name));
+            const pos = this.getUniformLocation(info.name);
+            if(pos === null) throw Error('ohohohohohohoho!????');
+            this.uniform_pos.set(info.name, pos);
         }
     }
 }
